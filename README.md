@@ -302,4 +302,4 @@ lib_deps =
 
 ## License
 
-Copyright © 2026 ZAN Tech. All rights reserved.
+MIT License — Copyright © 2026 ZAN Tech. See [LICENSE](LICENSE) for the full text.
