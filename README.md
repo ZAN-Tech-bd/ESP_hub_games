@@ -302,4 +302,4 @@ lib_deps =
 
 ## License
 
-No license specified — add one if you plan to share or open-source this project.
+Copyright © 2026 ZAN Tech. All rights reserved.
