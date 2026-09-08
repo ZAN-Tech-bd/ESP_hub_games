@@ -183,11 +183,24 @@ const SMOOTHING   = 0.25; // 0-1, exponential smoothing on raw sensor noise; low
 const MAX_SPEED   = 16;   // px/frame cap so the ship can't rocket across the screen
 const SHIP_BOTTOM_MARGIN = 90; // ship stays locked this many px above the bottom edge
 
+let bothButtonsWerePressed = false;
+
+function checkRestartButtons(d) {
+  const bothPressed = !!(d.btn1 && d.btn2);
+  // Edge-triggered: only fires on the press, not every poll while held down,
+  // and only restarts from the game-over screen (not mid-flight).
+  if (bothPressed && !bothButtonsWerePressed && !running) {
+    startGame();
+  }
+  bothButtonsWerePressed = bothPressed;
+}
+
 async function pollSensor() {
   try {
     const r = await fetch('/data', {cache:'no-store'});
     const d = await r.json();
     sensor = d;
+    checkRestartButtons(d);
     document.getElementById('status').textContent = 'sensor OK  ax:'+d.ax.toFixed(2)+' ay:'+d.ay.toFixed(2);
   } catch(e) {
     document.getElementById('status').textContent = 'sensor connection lost, retrying...';
@@ -550,6 +563,7 @@ function update() {
   // enemy bullets vs ship
   for (const eb of enemyBullets) {
     if (eb.hit) continue;
+
     const d = Math.hypot(ship.x - eb.x, ship.y - eb.y);
     if (d < SHIP_HIT_RADIUS) {
       eb.hit = true;

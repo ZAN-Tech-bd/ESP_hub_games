@@ -27,12 +27,16 @@ fire, avoid ramming mines, and shoot enemies before they close in.
    **Access Point** (`WIFI_AP` mode).
 2. It runs a small web server (port 80) with two routes:
    - `GET /` — serves the full game page (`index_html.h`).
-   - `GET /data` — returns live MPU6050 accelerometer/gyro readings as JSON,
-     e.g. `{"ax":0.01,"ay":0.98,"az":0.05,"gx":1.2,"gy":-0.3,"gz":0.1}`.
+   - `GET /data` — returns live MPU6050 accelerometer/gyro readings plus the
+     two restart-button states as JSON, e.g.
+     `{"ax":0.01,"ay":0.98,"az":0.05,"gx":1.2,"gy":-0.3,"gz":0.1,"btn1":false,"btn2":false}`.
 3. Your phone/laptop connects to the ESP32's WiFi network and opens the game
    page in a browser.
 4. The page polls `GET /data` about 50 times per second and uses the tilt
-   (`ax`, `ay`) to steer the fighter on screen.
+   (`ax`, `ay`) to steer the fighter on screen. The same JSON response also
+   carries the state of two restart pushbuttons (`btn1`, `btn2`) wired to the
+   ESP32 — holding **both down together** while the "Ship Destroyed" screen is
+   showing restarts the game, no browser click needed.
 5. The Serial Monitor also prints live MPU6050 readings once per second for
    wiring sanity checks.
 
@@ -44,14 +48,18 @@ fire, avoid ramming mines, and shoot enemies before they close in.
 |---|---|
 | ESP32 development board | Any standard ESP32 dev board (WROOM-32, DevKit V1, etc.) |
 | MPU6050 (GY-521 breakout) | 6-axis accelerometer + gyroscope, I2C |
+| 2x pushbutton | Momentary, normally-open — used together to restart after game over |
 | USB cable | For programming and power |
-| Jumper wires | 4 needed (VCC, GND, SDA, SCL) |
+| Jumper wires | 4 for the MPU6050 (VCC, GND, SDA, SCL) + 2 for the buttons |
 
 ---
 
 ## Pin Diagram / Wiring
 
-Connect the **MPU6050 (GY-521)** to the **ESP32** as follows:
+Two things connect to the ESP32: the **MPU6050** tilt sensor (I2C) and **two
+restart pushbuttons** (plain digital inputs).
+
+### MPU6050 (GY-521)
 
 | MPU6050 / GY-521 Pin | ESP32 Pin | Purpose |
 |:---:|:---:|---|
@@ -62,23 +70,61 @@ Connect the **MPU6050 (GY-521)** to the **ESP32** as follows:
 | **AD0** | **GND** (or leave floating) | Sets I2C address to `0x68` |
 | INT, XDA, XCL | *Not connected* | Unused in this project |
 
+### Restart Pushbuttons
+
+Each button has two legs. Wire **one leg to the GPIO pin, the other leg to
+GND** — no external resistor needed, the sketch enables the ESP32's internal
+pull-up on both pins (`pinMode(pin, INPUT_PULLUP)`), so a press pulls the pin
+LOW.
+
+| Button | ESP32 Pin | Other leg |
+|:---:|:---:|---|
+| **Button 1** | **GPIO 33** | GND |
+| **Button 2** | **GPIO 32** | GND |
+
+Both buttons must be held down **together** to restart the game from the
+"Ship Destroyed" screen — pressing just one does nothing, to avoid an
+accidental restart mid-flight.
+
+### Full wiring diagram
+
+```mermaid
+graph LR
+    subgraph ESP32["ESP32 DevKit"]
+        P33["GPIO 33"]
+        P32["GPIO 32"]
+        P21["GPIO 21 (SDA)"]
+        P22["GPIO 22 (SCL)"]
+        P3V3["3.3V"]
+        PGND["GND"]
+    end
+
+    subgraph MPU["MPU6050 (GY-521)"]
+        M_VCC["VCC"]
+        M_GND["GND"]
+        M_SDA["SDA"]
+        M_SCL["SCL"]
+        M_AD0["AD0"]
+    end
+
+    B1["Button 1"]
+    B2["Button 2"]
+
+    P3V3 --- M_VCC
+    PGND --- M_GND
+    P21 --- M_SDA
+    P22 --- M_SCL
+    M_AD0 --- PGND
+
+    P33 --- B1
+    B1 --- PGND
+    P32 --- B2
+    B2 --- PGND
 ```
-                 ESP32 DevKit                       MPU6050 (GY-521)
-              ┌──────────────────┐                 ┌──────────────────┐
-              │                  │                 │                  │
-              │            3.3V ●──────────────────● VCC              │
-              │             GND ●──────────────────● GND              │
-              │                  │                 │                  │
-              │  GPIO21 (SDA)   ●──────────────────● SDA              │
-              │  GPIO22 (SCL)   ●──────────────────● SCL              │
-              │                  │                 │                  │
-              │                  │        GND ──────● AD0 (I2C addr   │
-              │                  │                 │   = 0x68)        │
-              │                  │                 │  INT  (unused)   │
-              │                  │                 │  XDA  (unused)   │
-              │                  │                 │  XCL  (unused)   │
-              └──────────────────┘                 └──────────────────┘
-```
+
+> Both buttons share the same GND rail as the MPU6050 — any GND pin on the
+> ESP32 works, they're all the same net. `INT`, `XDA`, `XCL` on the MPU6050
+> are left unconnected and aren't shown above.
 
 > **Tip:** GPIO 21 (SDA) and GPIO 22 (SCL) are the ESP32's default I2C pins,
 > so no `Wire.setPins()` remapping is needed — the sketch calls
@@ -90,7 +136,7 @@ Connect the **MPU6050 (GY-521)** to the **ESP32** as follows:
 
 | File | Description |
 |---|---|
-| [FruitNinja_ESP32.ino](FruitNinja_ESP32.ino) | Main sketch: WiFi AP, web server, MPU6050 driver (Adafruit library) |
+| [FruitNinja_ESP32.ino](FruitNinja_ESP32.ino) | Main sketch: WiFi AP, web server, MPU6050 driver (Adafruit library), restart pushbutton reading |
 | [index_html.h](index_html.h) | The entire game (HTML/CSS/JS canvas game) as a `PROGMEM` string, served at `/` |
 | [platformio.ini](platformio.ini) | PlatformIO environment config and library dependencies |
 
@@ -169,6 +215,9 @@ lib_deps =
   the start/game-over screen.
 - **Calibrate button:** Zeroes out the current tilt as "center" — use it any
   time the neutral resting angle drifts.
+- **Restart after game over:** Instead of tapping "Launch Again" on the
+  screen, hold down **both** physical pushbuttons (GPIO 33 + GPIO 32)
+  together — the game restarts automatically. Holding only one does nothing.
 
 ---
 
@@ -179,6 +228,8 @@ lib_deps =
   an open network).
 - **I2C pins:** edit `SDA_PIN` / `SCL_PIN` in `FruitNinja_ESP32.ino` if you
   wire the MPU6050 to different GPIOs.
+- **Restart button pins:** edit `BTN1_PIN` / `BTN2_PIN` in
+  `FruitNinja_ESP32.ino` if you wire the buttons to different GPIOs.
 - **MPU6050 sensitivity/filtering:** edit the `mpu.setAccelerometerRange()`,
   `mpu.setGyroRange()`, `mpu.setFilterBandwidth()`, and
   `mpu.setHighPassFilter()` calls in `setup()`.
@@ -196,6 +247,7 @@ lib_deps =
 | Page won't load at `192.168.4.1` | Make sure your device is connected to the ESP32's WiFi, not your home WiFi |
 | Serial prints "Failed to find MPU6050 chip!" | Check MPU6050 wiring, especially SDA/SCL and 3.3V power |
 | Blade/ship drifts / doesn't center | Hold the sensor flat and tap **Calibrate** |
+| Holding both buttons doesn't restart | Confirm both legs of each button land on the correct GPIO (33/32) and GND — check `status` text isn't stuck on "sensor connection lost"; also note it only restarts from the game-over screen, not mid-flight |
 | Upload fails / port not found | Hold **BOOT** button during upload; check USB cable/drivers (CP2102/CH340); verify `upload_port` in `platformio.ini` |
 | PlatformIO build fails, can't find libraries | Make sure PlatformIO has internet access on first build to fetch `lib_deps`, or install them manually via Library Manager |
 

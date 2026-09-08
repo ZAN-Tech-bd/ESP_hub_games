@@ -43,6 +43,13 @@ const char* AP_PASSWORD = "12345678";   // must be 8+ chars, or set to "" for op
 #define SDA_PIN 21
 #define SCL_PIN 22
 
+// ---------- Restart pushbuttons ----------
+// Wired button -> GND, using the internal pull-up, so a press reads LOW.
+// Game restarts (from the "Ship Destroyed" screen) only when BOTH are held
+// down at once, so a single accidental tap during gameplay does nothing.
+#define BTN1_PIN 33
+#define BTN2_PIN 32
+
 WebServer server(80);
 Adafruit_MPU6050 mpu;
 bool mpuOK = false;
@@ -76,10 +83,12 @@ void printMpuLine() {
 // ---------------- Web server handlers ----------------
 void handleData() {
   mpuReadAll();
-  char buf[160];
+  bool btn1 = (digitalRead(BTN1_PIN) == LOW);
+  bool btn2 = (digitalRead(BTN2_PIN) == LOW);
+  char buf[192];
   snprintf(buf, sizeof(buf),
-    "{\"ax\":%.4f,\"ay\":%.4f,\"az\":%.4f,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f}",
-    ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps);
+    "{\"ax\":%.4f,\"ay\":%.4f,\"az\":%.4f,\"gx\":%.2f,\"gy\":%.2f,\"gz\":%.2f,\"btn1\":%s,\"btn2\":%s}",
+    ax_g, ay_g, az_g, gx_dps, gy_dps, gz_dps, btn1 ? "true" : "false", btn2 ? "true" : "false");
   server.sendHeader("Access-Control-Allow-Origin", "*");
   server.send(200, "application/json", buf);
 }
@@ -92,6 +101,9 @@ void handleRoot() {
 void setup() {
   Serial.begin(115200);
   delay(500);
+
+  pinMode(BTN1_PIN, INPUT_PULLUP);
+  pinMode(BTN2_PIN, INPUT_PULLUP);
 
   // --- MPU6050 init via Adafruit library (same driver as the working test sketch) ---
   Wire.begin(SDA_PIN, SCL_PIN);
